@@ -45,10 +45,7 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <nav
-          aria-label="Main navigation"
-          className="md:hidden border-t border-gray-100 bg-white px-6 py-4 flex flex-col gap-4"
-        >
+        <div className="md:hidden border-t border-gray-100 bg-white px-6 py-4 flex flex-col gap-4">
           {navLinks.map((link) => (
             <a
               key={link.href}
@@ -59,7 +56,10 @@ export default function Navbar() {
               {link.label}
             </a>
           ))}
-        </nav>
+          <div className="pt-1 border-t border-gray-100">
+            <SocialLinks />
+          </div>
+        </div>
       )}
     </header>
   )

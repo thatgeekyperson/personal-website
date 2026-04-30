@@ -8,9 +8,9 @@ export default function App() {
   return (
     <main>
       <Navbar />
-      <section id="hero"><Hero /></section>
-      <section id="about"><About /></section>
-      <section id="projects"><Projects /></section>
+      <div id="hero"><Hero /></div>
+      <div id="about"><About /></div>
+      <div id="projects"><Projects /></div>
       <Footer />
     </main>
   )
