@@ -2,7 +2,7 @@
 
 A minimal, production-ready personal website built with React, Vite, TypeScript, and Tailwind CSS v4. Features a hero section, about section, projects showcase, and navigation with GitHub/LinkedIn links.
 
-**Live site:** _(to be updated after deploy)_
+**Live site:** https://personal-website-4sq3ryba4-manankh-5932s-projects.vercel.app
 
 ---
 

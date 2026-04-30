@@ -23,7 +23,7 @@ export const projects: Project[] = [
       'This site — a minimal personal landing page built with React, TypeScript, and Tailwind CSS v4. Deployed to Vercel with zero-config CI.',
     techStack: ['React', 'TypeScript', 'Tailwind CSS', 'Vite', 'Vercel'],
     githubUrl: 'https://github.com/thatgeekyperson/personal-website',
-    liveUrl: 'https://manan.vercel.app',
+    liveUrl: 'https://personal-website-4sq3ryba4-manankh-5932s-projects.vercel.app',
   },
   {
     id: 'project-three',
