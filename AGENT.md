@@ -19,3 +19,31 @@ Constraints:
 - We aways refer to the documentation of the library version in use and refer to best practices in stackoverflow or medium articles.
 - If there are any commands user needs to run, do display the command in a single line and make it easily copiable.
 - After every few prompts, suggest how we can make the process better.
+
+## Autonomous Deploy Pipeline (Phase 10)
+
+Every push to `main` triggers `.github/workflows/deploy-optimize.yml` which:
+1. Deploys a Vercel preview via `scripts/deploy-optimize.js`
+2. Runs Lighthouse CI against the preview (using `VERCEL_AUTOMATION_BYPASS_SECRET` header to bypass auth)
+3. If any score < threshold, invokes `claude --print` with failing audits to fix code, commits, and retries (max 3 iterations)
+4. Promotes to production only when all four thresholds pass
+
+**Thresholds:** Performance ≥ 95 · Accessibility ≥ 100 · Best Practices ≥ 100 · SEO ≥ 90
+
+**Required GitHub Secrets** (Settings → Secrets and variables → Actions):
+- `ANTHROPIC_API_KEY` — from console.anthropic.com
+- `VERCEL_TOKEN` — from vercel.com/account/tokens
+- `VERCEL_ORG_ID` — from `.vercel/project.json` after running `vercel link`
+- `VERCEL_PROJECT_ID` — same file
+- `VERCEL_AUTOMATION_BYPASS_SECRET` — Vercel dashboard → Project → Settings → Deployment Protection
+
+**Local equivalent:** use the `/optimize` skill.
+
+**When extending the pipeline:**
+- Edit thresholds in `scripts/deploy-optimize.js` (THRESHOLDS constant) and `.lighthouserc.json`
+- The Claude fix prompt is in `scripts/deploy-optimize.js` → `claudeFix()` — update it if new fix patterns emerge
+- Do NOT run Lighthouse against Vercel preview URLs without the bypass header — scores will be invalid
+
+## Analytics
+
+`@vercel/analytics/react` is installed. The `<Analytics />` component is mounted in `src/App.tsx`. View traffic at vercel.com → project → Analytics tab.

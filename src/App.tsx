@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react'
 import Navbar from '@/components/Navbar'
 import Hero from '@/components/Hero'
 import About from '@/components/About'
@@ -12,6 +13,7 @@ export default function App() {
       <div id="about"><About /></div>
       <div id="projects"><Projects /></div>
       <Footer />
+      <Analytics />
     </main>
   )
 }
