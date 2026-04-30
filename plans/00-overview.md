@@ -8,7 +8,7 @@ Document all architecture decisions before any code is written. This file is the
 
 | Concern | Choice | Reason |
 |---|---|---|
-| Build tool | Vite 6 + SWC plugin | CRA is deprecated; Vite ESM-native dev server is near-instant; production build uses Rollup |
+| Build tool | Vite 8 + SWC plugin | CRA is deprecated; Vite ESM-native dev server is near-instant; production build uses Rollup (rolldown in v8) |
 | Language | TypeScript | Catches bugs at author time; industry standard for production React |
 | Styling | Tailwind CSS v4 | Single Vite plugin, zero config file, auto-purged production CSS |
 | Routing | React Router v7 | Modern `createBrowserRouter` API; future-proof data pattern |

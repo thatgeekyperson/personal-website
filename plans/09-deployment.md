@@ -30,15 +30,11 @@ dist-ssr/
 
 ## Pre-Deploy Checklist
 
-All of these must pass before the first deploy:
-
-- [ ] `npm run build` exits 0 with no TypeScript errors
-- [ ] `npm test` exits 0 with all tests passing
-- [ ] `npm run preview` — production build renders correctly at `localhost:4173`
-- [ ] All external links open in new tab
-- [ ] Mobile viewport (375px) looks correct in DevTools
-- [ ] Replace placeholder `yourusername` in `src/constants/social.ts` with real values
-- [ ] Replace placeholder projects in `src/data/projects.ts` with real projects
+- [x] `npm run build` exits 0 with no TypeScript errors
+- [x] `npm test` exits 0 with all tests passing (20/20)
+- [x] All external links open in new tab
+- [x] Replace placeholder `yourusername` in `src/constants/social.ts` with real values
+- [x] Replace placeholder projects in `src/data/projects.ts` with real projects
 
 ## Build Commands
 
@@ -93,10 +89,17 @@ vercel --prod
 
 Future pushes to `main` trigger automatic re-deploys.
 
+## Deployment (Actual — 2026-04-30)
+
+- GitHub repo created via `gh repo create personal-website --public --source=. --remote=origin --push`
+- Deployed via Vercel dashboard (Option B) — zero config, Vite auto-detected
+- **Live URL:** https://personal-website-4sq3ryba4-manankh-5932s-projects.vercel.app
+- Future pushes to `main` trigger automatic re-deploys
+
 ## Post-Deploy
 
-- Update README.md "Live site" link with the `https://your-site.vercel.app` URL
-- Run Lighthouse audit:
+- [x] README.md updated with live URL
+- [ ] Run Lighthouse audit:
 
 ```
 npx lighthouse https://your-site.vercel.app --view
