@@ -7,6 +7,7 @@ We first want to make a guide to install required dependencies react and such to
 We always want to create plan files in the main folder of the project under plans/*.md path.
 
 Constraints:
+- After any code change, always run `npm run build` before running or testing the preview server (`npm run preview`) — it serves `dist/` and does not reflect changes automatically. The dev server (`npm run dev`) does not require a rebuild.
 - All documents to be up-to-dat after each iteration.
 - No execution until we finalize on the plan, and docs are updated. We update the docs again at the end, with any decisions we took which digressed from the earlier though process.
 - We do spin up code review agent to verify all the changes.
