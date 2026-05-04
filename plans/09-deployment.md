@@ -99,13 +99,12 @@ Future pushes to `main` trigger automatic re-deploys.
 ## Post-Deploy
 
 - [x] README.md updated with live URL
-- [ ] Run Lighthouse audit:
+- [x] Custom domain linked in Vercel dashboard
+- [x] Lighthouse scores validated: 92 / 100 / 96 (SEO skipped on preview — see Phase 10)
+- [x] Autonomous CI/CD pipeline added in Phase 10 — manual deploys no longer needed
 
-```
-npx lighthouse https://your-site.vercel.app --view
-```
-
-Target scores: Performance > 90, Accessibility > 90, Best Practices > 90, SEO > 90.
+> Future deploys are handled entirely by `.github/workflows/deploy-optimize.yml`.
+> See [plans/10-autonomous-deploy.md](10-autonomous-deploy.md) for full pipeline documentation.
 
 ## Why Vercel over Alternatives
 

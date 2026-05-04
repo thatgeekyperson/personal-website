@@ -2,7 +2,7 @@
 
 A minimal, production-ready personal website built with React, Vite, TypeScript, and Tailwind CSS v4. Features a hero section, about section, projects showcase, and navigation with GitHub/LinkedIn links.
 
-**Live site:** https://personal-website-4sq3ryba4-manankh-5932s-projects.vercel.app
+**Live site:** Custom domain configured in Vercel dashboard. CI/CD pipeline deploys automatically on every push to `main`.
 
 ---
 
@@ -79,15 +79,29 @@ Preview runs at `http://localhost:4173`.
 
 ## Deployment
 
-This site deploys to [Vercel](https://vercel.com). Vercel auto-detects Vite — no additional configuration is needed beyond `vercel.json` (already committed).
+Every push to `main` triggers an automated pipeline (`.github/workflows/deploy-optimize.yml`) that:
 
-**Deploy via Vercel CLI:**
+1. Runs tests and builds
+2. Deploys a Vercel preview
+3. Runs Lighthouse CI against the preview
+4. Deploys to production only if all Lighthouse thresholds pass
+
+**Lighthouse thresholds (CI):** Performance ≥ 90 · Accessibility = 100 · Best Practices ≥ 96 · SEO skipped (Vercel adds `noindex` to preview URLs)
+
+**Required GitHub secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Source |
+|---|---|
+| `VERCEL_TOKEN` | vercel.com/account/tokens |
+| `VERCEL_ORG_ID` | `.vercel/project.json` → `orgId` (run `vercel link` locally) |
+| `VERCEL_PROJECT_ID` | `.vercel/project.json` → `projectId` |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel dashboard → Project → Settings → Deployment Protection |
+
+To deploy manually:
 
 ```
 vercel --prod
 ```
-
-**Or connect via Vercel dashboard:** import the GitHub repository and Vercel will configure everything automatically.
 
 ---
 
@@ -103,8 +117,14 @@ src/
   router.tsx        # Route definitions
   main.tsx          # App entry point
   index.css         # Tailwind v4 entry + design tokens
+scripts/
+  deploy-optimize.js      # Autonomous deploy + Lighthouse loop
+  lighthouse-playbook.js  # Static fix map (audit ID → file edit)
+.github/workflows/
+  deploy-optimize.yml     # CI/CD pipeline
 plans/              # Architecture decision records (one per phase)
 vercel.json         # SPA routing config for Vercel
+.lighthouserc.json  # Lighthouse CI thresholds (local reference)
 ```
 
 ---
@@ -123,6 +143,7 @@ vercel.json         # SPA routing config for Vercel
 | Social Links | [plans/07-social-links.md](plans/07-social-links.md) |
 | Testing | [plans/08-testing.md](plans/08-testing.md) |
 | Deployment | [plans/09-deployment.md](plans/09-deployment.md) |
+| Autonomous Deploy Pipeline | [plans/10-autonomous-deploy.md](plans/10-autonomous-deploy.md) |
 
 ---
 
@@ -140,6 +161,8 @@ Each phase is implemented on a feature branch and reviewed before merging to `ma
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 |
 | Routing | React Router v7 |
-| Icons | lucide-react |
-| Testing | Vitest + @testing-library/react |
-| Deployment | Vercel |
+| Icons | lucide-react (+ inline SVGs for GitHub/LinkedIn) |
+| Testing | Vitest 4 + @testing-library/react 16 |
+| Analytics | @vercel/analytics/react |
+| Deployment | Vercel (custom domain) |
+| CI/CD | GitHub Actions + Lighthouse CI |

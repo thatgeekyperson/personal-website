@@ -43,3 +43,5 @@ Document all architecture decisions before any code is written. This file is the
 7. Social links + Footer
 8. Testing
 9. Production build + Vercel deployment
+10. Autonomous deploy pipeline (GitHub Actions → Vercel preview → Lighthouse CI → prod)
+11. Code review + pipeline hardening (security, pinning, gitignore, commit push)
