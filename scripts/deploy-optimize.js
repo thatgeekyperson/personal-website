@@ -125,10 +125,12 @@ function checkThresholds(scores) {
     .map(([cat, min]) => `  ${cat}: ${scores[cat]} (need ≥ ${min})`)
 }
 
-function promoteToProduction(url) {
-  log(`Promoting ${url} to production...`)
-  run(`vercel promote ${url} --token=${VERCEL_TOKEN} --yes`, { stdio: 'inherit' })
-  log('✅ Promoted to production.')
+function deployToProduction() {
+  log('Deploying to production...')
+  const out = run(`vercel deploy --prod --token=${VERCEL_TOKEN} --yes 2>&1`)
+  const urls = out.match(/https:\/\/[\w.-]+\.vercel\.app/g) ?? []
+  const prodUrl = urls[urls.length - 1] ?? '(unknown)'
+  log(`✅ Production URL: ${prodUrl}`)
 }
 
 function commitIfChanged(message) {
@@ -198,7 +200,7 @@ async function main() {
     process.exit(1)
   }
 
-  promoteToProduction(previewUrl)
+  deployToProduction()
 }
 
 main().catch(err => {
