@@ -9,7 +9,7 @@ jobs:
   deploy-and-optimize:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # allows Claude's fix commits to be pushed back
+      contents: write # allows playbook fix commits to be pushed back to main
 
     steps:
       - name: Checkout
@@ -34,7 +34,7 @@ jobs:
         run: npm run build
 
       - name: Install global tools
-        run: npm install -g vercel@latest @lhci/cli@0.14 @anthropic-ai/claude-code
+        run: npm install -g vercel@39 @lhci/cli@0.14.0
 
       - name: Configure git identity
         run: |
@@ -46,5 +46,7 @@ jobs:
         run: node scripts/deploy-optimize.js
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 

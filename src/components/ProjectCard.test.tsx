@@ -7,7 +7,7 @@ const mockProject: Project = {
   title: 'Test Project',
   description: 'A project used for testing purposes.',
   techStack: ['React', 'TypeScript'],
-  githubUrl: 'https://github.com/yourusername/test-project',
+  githubUrl: 'https://github.com/test-org/test-project',
 }
 
 describe('ProjectCard', () => {

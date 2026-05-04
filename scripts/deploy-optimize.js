@@ -56,7 +56,7 @@ function setOutput(key, value) {
 
 function deployPreview() {
   log('Deploying Vercel preview...')
-  const out = run(`vercel deploy --token=${VERCEL_TOKEN} --yes 2>&1`)
+  const out = run('vercel deploy --token "$VERCEL_TOKEN" --yes 2>&1')
   const urls = out.match(/https:\/\/[\w.-]+\.vercel\.app/g) ?? []
   if (!urls.length) throw new Error(`No deployment URL found:\n${out}`)
   const url = urls[urls.length - 1]
@@ -127,7 +127,7 @@ function checkThresholds(scores) {
 
 function deployToProduction() {
   log('Deploying to production...')
-  const out = run(`vercel deploy --prod --token=${VERCEL_TOKEN} --yes 2>&1`)
+  const out = run('vercel deploy --prod --token "$VERCEL_TOKEN" --yes 2>&1')
   const urls = out.match(/https:\/\/[\w.-]+\.vercel\.app/g) ?? []
   const prodUrl = urls[urls.length - 1] ?? '(unknown)'
   log(`✅ Production URL: ${prodUrl}`)
@@ -136,9 +136,11 @@ function deployToProduction() {
 function commitIfChanged(message) {
   const status = run('git status --porcelain').trim()
   if (!status) { log('No changes to commit'); return false }
-  run('git add -A')
+  // Stage only source files — never Lighthouse report artifacts
+  run('git add index.html src/index.css public/robots.txt')
   run(`git commit -m "${message}"`)
-  log(`Committed: ${message}`)
+  run('git push origin HEAD')
+  log(`Committed and pushed: ${message}`)
   return true
 }
 
@@ -181,7 +183,6 @@ async function main() {
       log('Applying static fix playbook...')
       const fixed = applyPlaybook(failingAuditIds)
       if (fixed) {
-        run('npm run build', { stdio: 'inherit' })
         commitIfChanged(`fix: lighthouse playbook attempt ${i + 1}`)
       } else {
         log('Playbook has no fixes for remaining audits — stopping early.')
