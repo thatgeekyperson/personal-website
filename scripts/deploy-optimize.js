@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-'use strict'
 
 /**
  * Autonomous deploy-and-optimize loop for personal-website.
@@ -13,9 +12,9 @@
  * Exits non-zero if thresholds not met after MAX_ITERATIONS.
  */
 
-const { execSync, spawnSync } = require('child_process')
-const fs = require('fs')
-const path = require('path')
+import { execSync, spawnSync } from 'child_process'
+import fs from 'fs'
+import path from 'path'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
