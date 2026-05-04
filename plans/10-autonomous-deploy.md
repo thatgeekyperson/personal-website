@@ -75,13 +75,20 @@ Vercel preview URLs require authentication by default, blocking Lighthouse in CI
 
 Audits not in the playbook (e.g. `color-contrast`, `tap-targets`) require manual fixes.
 
-## Key Learnings (from initial runs)
+## Key Learnings (from initial runs + Phase 11 review)
 
 - **Vercel preview URLs are always `noindex`** — Lighthouse SEO will always fail against preview URLs. Never gate production on SEO score from CI.
 - **CI performance scores are 5 pts lower** — shared GitHub runners have variable resources. Use 90 as the CI threshold, 95 as the local target.
 - **`actions/checkout` and `actions/setup-node` needed v6** — v4 still ran on Node 20 internally. v6 is native Node 24.
 - **`package.json` has `"type": "module"`** — all scripts must use ESM `import`, not `require()`.
 - **Don't commit when the fix loop fails** — the original Claude-based loop committed empty changes on API errors. Playbook skips commit if nothing changed.
+- **`vercel promote` fails with "Deployment belongs to a different team"** — `.vercel/` is gitignored so project.json is absent from CI. Without `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` env vars, the deploy and promote contexts diverge. Fixed by using `vercel deploy --prod` (no team lookup) and passing both ID vars explicitly.
+- **Always pass `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` as env vars to the deploy step** — the CLI cannot read `.vercel/project.json` in CI since that directory is gitignored.
+- **`git add -A` in fix commits will stage `.lighthouseci/` report JSON** — add `.lighthouseci` to `.gitignore` and stage only the specific files playbook edits.
+- **Fix commits must `git push origin HEAD`** — CI runners are ephemeral; local-only commits vanish when the job ends. `contents: write` permission grants push access but doesn't auto-push.
+- **Don't interpolate secrets into JS template literals for shell commands** — use `'cmd --token "$VAR"'` so the shell expands it safely from `process.env`.
+- **Pin global npm installs** — `npm install -g vercel@latest` is a reliability risk. Use `vercel@39` and `@lhci/cli@0.14.0`; remove unused packages (`@anthropic-ai/claude-code` was a leftover).
+- **Remove redundant rebuilds** — the fix block called `npm run build` before committing, then the next iteration rebuilt again from the same source. The fix-block build was unnecessary.
 
 ## Local Usage
 
