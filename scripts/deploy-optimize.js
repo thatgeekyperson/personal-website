@@ -125,6 +125,12 @@ function checkThresholds(scores) {
     .map(([cat, min]) => `  ${cat}: ${scores[cat]} (need ≥ ${min})`)
 }
 
+function promoteToProduction(url) {
+  log(`Promoting ${url} to production...`)
+  run(`vercel promote ${url} --token=${VERCEL_TOKEN} --yes`, { stdio: 'inherit' })
+  log('✅ Promoted to production.')
+}
+
 function commitIfChanged(message) {
   const status = run('git status --porcelain').trim()
   if (!status) { log('No changes to commit'); return false }
@@ -191,6 +197,8 @@ async function main() {
     log('🚫 Production deploy blocked — Lighthouse thresholds not met.')
     process.exit(1)
   }
+
+  promoteToProduction(previewUrl)
 }
 
 main().catch(err => {
