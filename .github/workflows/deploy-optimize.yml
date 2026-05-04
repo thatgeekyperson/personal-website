@@ -34,7 +34,7 @@ jobs:
         run: npm run build
 
       - name: Install global tools
-        run: npm install -g vercel@39 @lhci/cli@0.14.0
+        run: npm install -g vercel@latest @lhci/cli@0.14.0
 
       - name: Configure git identity
         run: |
