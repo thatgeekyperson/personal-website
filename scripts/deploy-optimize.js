@@ -6,25 +6,29 @@
  * Runs in GitHub Actions. For each iteration:
  *   1. Deploy to Vercel preview
  *   2. Run Lighthouse CI against the preview URL
- *   3. If any score < threshold, ask Claude Code to fix, commit, and retry
+ *   3. If any score < threshold, apply static fix playbook and retry
+ *
+ * No external API required. Fixes are deterministic file edits defined in
+ * scripts/lighthouse-playbook.js.
  *
  * Writes GitHub Actions outputs: passed=true|false, preview_url=<url>
  * Exits non-zero if thresholds not met after MAX_ITERATIONS.
  */
 
-import { execSync, spawnSync } from 'child_process'
+import { execSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import { applyPlaybook } from './lighthouse-playbook.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const THRESHOLDS = {
-  performance: 90, // CI runners score ~5 pts lower than local due to shared resources
-
+  // CI runners score ~5 pts lower than local due to shared resource contention
+  performance: 90,
   accessibility: 100,
   'best-practices': 96,
-  // Vercel preview URLs always get X-Robots-Tag: noindex, tanking SEO score.
-  // SEO is verified separately against localhost (via /optimize skill).
+  // Vercel adds X-Robots-Tag: noindex to ALL preview URLs by design.
+  // SEO is validated locally via the /optimize skill instead.
   seo: 0,
 }
 
@@ -101,55 +105,24 @@ function runLighthouse(url) {
     seo: Math.round(cats.seo.score * 100),
   }
 
-  const failingAudits = Object.values(report.audits)
+  // Extract failing audit IDs for the playbook
+  const failingAuditIds = Object.values(report.audits)
+    .filter(a => a.score !== null && a.score !== undefined && a.score < 1)
+    .map(a => a.id)
+
+  const failingAuditsSummary = Object.values(report.audits)
     .filter(a => a.score !== null && a.score !== undefined && a.score < 1)
     .sort((a, b) => a.score - b.score)
     .slice(0, 15)
-    .map(a => `  [${Math.round(a.score * 100)}] ${a.title}: ${a.displayValue ?? ''}`)
+    .map(a => `  [${Math.round(a.score * 100)}] ${a.id}: ${a.title}`)
 
-  return { scores, failingAudits }
+  return { scores, failingAuditIds, failingAuditsSummary }
 }
 
 function checkThresholds(scores) {
   return Object.entries(THRESHOLDS)
     .filter(([cat, min]) => scores[cat] < min)
     .map(([cat, min]) => `  ${cat}: ${scores[cat]} (need ≥ ${min})`)
-}
-
-// ── Claude fix ────────────────────────────────────────────────────────────────
-
-function claudeFix(failures, failingAudits, attempt) {
-  log(`Invoking Claude Code to fix (attempt ${attempt})...`)
-
-  const prompt = [
-    'Personal website Lighthouse audit failed. Fix the issues listed below.',
-    'Rules:',
-    '  - Do NOT change visual design or text content',
-    '  - Only fix what Lighthouse explicitly flags',
-    '  - Key files: index.html, src/index.css, src/components/, public/',
-    '',
-    'Failing categories:',
-    ...failures,
-    '',
-    'Failing audits:',
-    ...failingAudits,
-    '',
-    'After all fixes, verify:',
-    '  1. npm test -- --run   (all 20 tests must pass)',
-    '  2. npm run build       (must exit 0)',
-  ].join('\n')
-
-  const result = spawnSync(
-    'claude',
-    ['--print', prompt, '--allowedTools', 'Edit,Write,Bash'],
-    { encoding: 'utf8', stdio: 'inherit', cwd: process.cwd() },
-  )
-
-  if (result.status !== 0) {
-    log(`WARNING: claude exited with status ${result.status} — skipping commit`)
-    return false
-  }
-  return true
 }
 
 function commitIfChanged(message) {
@@ -182,7 +155,7 @@ async function main() {
     log('Waiting 15 s for Vercel to propagate...')
     await new Promise(r => setTimeout(r, 15_000))
 
-    const { scores, failingAudits } = runLighthouse(previewUrl)
+    const { scores, failingAuditIds, failingAuditsSummary } = runLighthouse(previewUrl)
     log(`Scores: ${JSON.stringify(scores)}`)
 
     const failures = checkThresholds(scores)
@@ -194,11 +167,18 @@ async function main() {
     }
 
     log(`❌ Failing:\n${failures.join('\n')}`)
+    log(`Failing audits:\n${failingAuditsSummary.join('\n')}`)
 
     if (i < MAX_ITERATIONS - 1) {
-      const fixed = claudeFix(failures, failingAudits, i + 1)
-      if (fixed) commitIfChanged(`fix: lighthouse optimization attempt ${i + 1}`)
-      else { log('Claude did not fix anything — stopping early.'); break }
+      log('Applying static fix playbook...')
+      const fixed = applyPlaybook(failingAuditIds)
+      if (fixed) {
+        run('npm run build', { stdio: 'inherit' })
+        commitIfChanged(`fix: lighthouse playbook attempt ${i + 1}`)
+      } else {
+        log('Playbook has no fixes for remaining audits — stopping early.')
+        break
+      }
     } else {
       log('Max iterations reached — thresholds not met.')
     }
