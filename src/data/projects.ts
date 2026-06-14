@@ -23,7 +23,24 @@ export const projects: Project[] = [
       'This site — a minimal personal landing page built with React, TypeScript, and Tailwind CSS v4. Deployed to Vercel with zero-config CI.',
     techStack: ['React', 'TypeScript', 'Tailwind CSS', 'Vite', 'Vercel'],
     githubUrl: 'https://github.com/thatgeekyperson/personal-website',
-    liveUrl: 'https://personal-website-4sq3ryba4-manankh-5932s-projects.vercel.app',
+    liveUrl: 'https://manankhasgiwale.xyz',
+  },
+  {
+    id: 'todo-app',
+    title: 'Todo App',
+    description:
+      'A clean, responsive task manager for organizing daily to-dos with add, complete, and filter workflows.',
+    techStack: ['React', 'TypeScript', 'Tailwind CSS'],
+    githubUrl: 'https://github.com/thatgeekyperson/forge',
+    liveUrl: 'https://forge.manankhasgiwale.xyz',
+  },
+  {
+    id: 'lifestream',
+    title: 'Lifestream',
+    description:
+      'A personal dashboard for tracking habits, goals, and daily metrics over time with simple visualizations.',
+    techStack: ['React', 'TypeScript', 'Tailwind CSS'],
+    githubUrl: 'https://github.com/thatgeekyperson/lifestream',
   },
   {
     id: 'project-three',
