@@ -4,22 +4,27 @@
 
 Every push to `main` triggers a pipeline that:
 1. Runs tests and builds
-2. Deploys to a Vercel preview
-3. Runs Lighthouse CI against the preview (with auth bypass)
-4. If any score is below threshold, applies the static fix playbook and re-deploys
+2. Serves the production build locally (`vite preview` on `:4173`)
+3. Runs Lighthouse CI against `localhost:4173` (median of 3 runs)
+4. If any score is below threshold, applies the static fix playbook, rebuilds, and re-audits
 5. Loops up to 3 times
-6. Only promotes to production when all thresholds pass
+6. Only deploys to production (`vercel deploy --prod`) when all thresholds pass
 
-Local equivalent: `/optimize` skill runs the same loop against `localhost:4173`.
+Local equivalent: `/optimize` skill, or `SKIP_DEPLOY=1 node scripts/deploy-optimize.js`
+runs the same audit loop without deploying.
+
+> **Why localhost, not the Vercel preview URL** (changed 2026-06-14): see Key Learnings —
+> the preview injects a toolbar/protection script that depresses Performance ~12 pts vs
+> production, making it an unreliable, pessimistic gate.
 
 ## Thresholds
 
-| Category | CI Minimum | Notes |
+| Category | Minimum | Notes |
 |---|---|---|
-| Performance | 90 | CI runners score ~5 pts lower than local due to shared resources |
+| Performance | 95 | Stable on localhost (median of 3 ≈ 99) |
 | Accessibility | 100 | |
-| Best Practices | 96 | Vercel analytics script accounts for the 4-pt gap vs local |
-| SEO | 0 (skipped) | Vercel adds `X-Robots-Tag: noindex` to all previews — SEO checked locally only |
+| Best Practices | 96 | On localhost, `@vercel/analytics` insights script 404s → one `errors-in-console` failure (localhost-only; production = 100) |
+| SEO | 90 | Real value now — localhost has no `noindex` header (scores 100). Was disabled (0) only while the gate ran against preview URLs. |
 
 ## Files
 
@@ -53,11 +58,11 @@ Vercel preview URLs require authentication by default, blocking Lighthouse in CI
 
 ## How the Static Fix Playbook Works
 
-1. `lhci collect` runs Lighthouse against the preview URL (with `x-vercel-protection-bypass` header)
-2. Failing audit IDs are extracted from the JSON report
+1. `lhci collect` runs Lighthouse 3× against `localhost:4173`; scores are graded on the **median** per category
+2. Failing audit IDs are extracted (union across runs — anything that fails in any run)
 3. `scripts/lighthouse-playbook.js` maps each audit ID to a deterministic file edit
-4. If any fix was applied, `npm run build` runs and changes are committed
-5. A new preview is deployed and Lighthouse runs again — up to 3 total iterations
+4. If any fix was applied, changes are committed and `npm run build` re-runs
+5. The build is re-served and Lighthouse runs again — up to 3 total iterations
 6. If no playbook fix exists for the remaining audit, the loop stops early with a clear message
 
 ## Playbook Coverage
@@ -89,6 +94,7 @@ Audits not in the playbook (e.g. `color-contrast`, `tap-targets`) require manual
 - **Don't interpolate secrets into JS template literals for shell commands** — use `'cmd --token "$VAR"'` so the shell expands it safely from `process.env`.
 - **Pin global npm installs** — `npm install -g vercel@latest` is a reliability risk. Use `vercel@39` and `@lhci/cli@0.14.0`; remove unused packages (`@anthropic-ai/claude-code` was a leftover).
 - **Remove redundant rebuilds** — the fix block called `npm run build` before committing, then the next iteration rebuilt again from the same source. The fix-block build was unnecessary.
+- **Cold-start variance can flake the Performance gate** — Lighthouse runs once (`--numberOfRuns=1`) against a freshly-deployed (cold) preview. A cold first hit (slow TTFB + busy main thread) can drop Performance 10–15 pts; the failing sub-audits are typically `first-contentful-paint`, `total-blocking-time`, and `max-potential-fid`. This is usually NOT a real regression. Verify locally with `--numberOfRuns=3` against `localhost:4173` (expect ~99); if local passes, just re-run the workflow (`gh run rerun <id> --failed`). Durable fix if it recurs: collect 3 runs and grade the **median** (the script currently reads a single arbitrary report via `.sort().pop()`, so bumping runs alone won't help) plus a warm-up `curl` before collecting. *(Observed 2026-06-14: Performance 81 in CI, 94–99 locally for a data-only change.)*
 
 ## Local Usage
 
