@@ -38,8 +38,8 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "thatgeekyperson"
+          git config user.email "manan.khasgiwale@colorado.edu"
 
       - name: Audit (localhost) & deploy
         id: optimize
