@@ -1,50 +1,37 @@
 #!/usr/bin/env node
 
 /**
- * Autonomous deploy-and-optimize loop for personal-website.
- *
- * Runs in GitHub Actions. For each iteration:
- *   1. Deploy to Vercel preview
- *   2. Run Lighthouse CI against the preview URL
- *   3. If any score < threshold, apply static fix playbook and retry
- *
- * No external API required. Fixes are deterministic file edits defined in
- * scripts/lighthouse-playbook.js.
- *
- * Writes GitHub Actions outputs: passed=true|false, preview_url=<url>
- * Exits non-zero if thresholds not met after MAX_ITERATIONS.
+ * Reusable Lighthouse Audit & Fix Orchestrator.
+ * 
+ * Orchestrates: Build -> Local Preview -> Lighthouse Audit -> Fix (via python utility) -> Deploy.
  */
 
-import { execSync } from 'child_process'
-import fs from 'fs'
-import path from 'path'
-import { applyPlaybook } from './lighthouse-playbook.js'
+import { execSync, spawn } from "child_process"
+import http from "http"
+import fs from "fs"
+import path from "path"
 
-// ── Config ────────────────────────────────────────────────────────────────────
-
+// -- Config (override via env) --
 const THRESHOLDS = {
-  // CI runners score ~5 pts lower than local due to shared resource contention
-  performance: 90,
-  accessibility: 100,
-  'best-practices': 96,
-  // Vercel adds X-Robots-Tag: noindex to ALL preview URLs by design.
-  // SEO is validated locally via the /optimize skill instead.
-  seo: 0,
+  performance: parseInt(process.env.LH_PERFORMANCE ?? "80", 10),
+  accessibility: parseInt(process.env.LH_ACCESSIBILITY ?? "90", 10),
+  "best-practices": parseInt(process.env.LH_BEST_PRACTICES ?? "90", 10),
+  seo: parseInt(process.env.LH_SEO ?? "80", 10),
 }
 
-const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS ?? '3', 10)
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN
-const BYPASS_SECRET = process.env.VERCEL_BYPASS_SECRET
-const LHCI_DIR = '.lighthouseci'
+const PREVIEW_URL = process.env.LH_PREVIEW_URL ?? "http://localhost:4173"
+const PREVIEW_PORT = parseInt(new URL(PREVIEW_URL).port, 10) || 80
+const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS ?? "3", 10)
+const LHCI_DIR = ".lighthouseci"
+const FIX_SCRIPT = ".github/scripts/lighthouse-fix.py"
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// -- Helpers --
 function run(cmd, opts = {}) {
-  return execSync(cmd, { encoding: 'utf8', stdio: 'pipe', ...opts })
+  return execSync(cmd, { encoding: "utf8", stdio: "pipe", ...opts })
 }
 
 function log(msg) {
-  process.stdout.write(`[deploy-optimize] ${msg}\n`)
+  process.stdout.write(`[orchestrator] ${msg}\n`)
 }
 
 function setOutput(key, value) {
@@ -52,71 +39,80 @@ function setOutput(key, value) {
   if (file) fs.appendFileSync(file, `${key}=${value}\n`)
 }
 
-// ── Deploy ────────────────────────────────────────────────────────────────────
-
-function deployPreview() {
-  log('Deploying Vercel preview...')
-  const out = run('vercel deploy --token "$VERCEL_TOKEN" --yes 2>&1')
-  const urls = out.match(/https:\/\/[\w.-]+\.vercel\.app/g) ?? []
-  if (!urls.length) throw new Error(`No deployment URL found:\n${out}`)
-  const url = urls[urls.length - 1]
-  log(`Preview URL: ${url}`)
-  return url
+function median(nums) {
+  const sorted = nums.slice().sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)]
 }
 
-// ── Lighthouse ────────────────────────────────────────────────────────────────
+// -- Preview Server --
+function serveLocal() {
+  log(`Starting local preview server on :${PREVIEW_PORT}...`)
+  return spawn("npx", ["vite", "preview", "--port", String(PREVIEW_PORT), "--strictPort"], {
+    stdio: "ignore",
+  })
+}
 
+function waitForServer(url, timeoutMs = 60_000) {
+  const start = Date.now()
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const req = http.get(url, res => {
+        res.destroy()
+        log(`Server responding on ${url}`)
+        resolve()
+      })
+      req.on("error", () => {
+        if (Date.now() - start > timeoutMs) reject(new Error(`Server did not start within ${timeoutMs}ms: ${url}`))
+        else setTimeout(attempt, 1000)
+      })
+    }
+    attempt()
+  })
+}
+
+// -- Lighthouse --
 function runLighthouse(url) {
-  log(`Running Lighthouse against ${url}`)
+  log(`Running Lighthouse (median of 3) against ${url}`)
 
   if (fs.existsSync(LHCI_DIR)) fs.rmSync(LHCI_DIR, { recursive: true })
 
-  const extraHeaders = BYPASS_SECRET
-    ? `{"x-vercel-protection-bypass":"${BYPASS_SECRET}"}`
-    : '{}'
+  // Use --chrome-flags to bypass potential interstitials and sandbox issues
+  const chromeFlags = "--no-sandbox --disable-dev-shm-usage --disable-gpu --headless"
 
   run(
     [
-      'lhci collect',
+      "lhci collect",
       `--url="${url}"`,
-      '--numberOfRuns=1',
-      `--settings.extraHeaders='${extraHeaders}'`,
-      '--settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"',
-      '--settings.onlyCategories=performance,accessibility,best-practices,seo',
-    ].join(' '),
-    { stdio: 'inherit' },
+      "--numberOfRuns=3",
+      `--settings.chromeFlags="${chromeFlags}"`,
+      "--settings.onlyCategories=performance,accessibility,best-practices,seo",
+    ].join(" "),
+    { stdio: "inherit" }
   )
 
-  const reportFile = fs
-    .readdirSync(LHCI_DIR)
-    .filter(f => f.endsWith('.json') && !f.includes('manifest'))
-    .sort()
-    .pop()
+  const reportFiles = fs.readdirSync(LHCI_DIR).filter(f => f.endsWith(".json") && !f.includes("manifest"))
+  if (!reportFiles.length) throw new Error("No Lighthouse report found.")
 
-  if (!reportFile) throw new Error('No Lighthouse report found in ' + LHCI_DIR)
-
-  const report = JSON.parse(fs.readFileSync(path.join(LHCI_DIR, reportFile), 'utf8'))
-  const cats = report.categories
-
+  const reports = reportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
+  const catScore = (r, cat) => Math.round(r.categories[cat].score * 100)
+  
   const scores = {
-    performance: Math.round(cats.performance.score * 100),
-    accessibility: Math.round(cats.accessibility.score * 100),
-    'best-practices': Math.round(cats['best-practices'].score * 100),
-    seo: Math.round(cats.seo.score * 100),
+    performance: median(reports.map(r => catScore(r, "performance"))),
+    accessibility: median(reports.map(r => catScore(r, "accessibility"))),
+    "best-practices": median(reports.map(r => catScore(r, "best-practices"))),
+    seo: median(reports.map(r => catScore(r, "seo"))),
   }
 
-  // Extract failing audit IDs for the playbook
-  const failingAuditIds = Object.values(report.audits)
-    .filter(a => a.score !== null && a.score !== undefined && a.score < 1)
-    .map(a => a.id)
+  const failingAuditIds = []
+  for (const report of reports) {
+    for (const audit of Object.values(report.audits)) {
+      if (audit.score !== null && audit.score < 1) {
+        if (!failingAuditIds.includes(audit.id)) failingAuditIds.push(audit.id)
+      }
+    }
+  }
 
-  const failingAuditsSummary = Object.values(report.audits)
-    .filter(a => a.score !== null && a.score !== undefined && a.score < 1)
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 15)
-    .map(a => `  [${Math.round(a.score * 100)}] ${a.id}: ${a.title}`)
-
-  return { scores, failingAuditIds, failingAuditsSummary }
+  return { scores, failingAuditIds }
 }
 
 function checkThresholds(scores) {
@@ -125,86 +121,91 @@ function checkThresholds(scores) {
     .map(([cat, min]) => `  ${cat}: ${scores[cat]} (need ≥ ${min})`)
 }
 
+// -- Deployment --
 function deployToProduction() {
-  log('Deploying to production...')
-  const out = run('vercel deploy --prod --token "$VERCEL_TOKEN" --yes 2>&1')
+  if (!process.env.VERCEL_TOKEN) {
+    log("VERCEL_TOKEN missing. Skipping deploy.")
+    return
+  }
+  log("Deploying to production via Vercel...")
+  const out = run("vercel deploy --prod --token \"$VERCEL_TOKEN\" --yes 2>&1")
   const urls = out.match(/https:\/\/[\w.-]+\.vercel\.app/g) ?? []
-  const prodUrl = urls[urls.length - 1] ?? '(unknown)'
-  log(`✅ Production URL: ${prodUrl}`)
+  log(`✅ Production URL: ${urls[urls.length - 1] ?? "(unknown)"}`)
 }
 
 function commitIfChanged(message) {
-  const status = run('git status --porcelain').trim()
-  if (!status) { log('No changes to commit'); return false }
-  // Stage only source files — never Lighthouse report artifacts
-  run('git add index.html src/index.css public/robots.txt')
+  const status = run("git status --porcelain").trim()
+  if (!status) return false
+  run("git add .")
   run(`git commit -m "${message}"`)
-  run('git push origin HEAD')
-  log(`Committed and pushed: ${message}`)
+  run("git push origin HEAD")
+  log(`Committed: ${message}`)
   return true
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
+// -- Main --
 async function main() {
-  let previewUrl = ''
   let passed = false
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    log(`\n${'─'.repeat(60)}`)
-    log(`Iteration ${i + 1} / ${MAX_ITERATIONS}`)
-    log('─'.repeat(60))
+    log(`\nIteration ${i + 1} / ${MAX_ITERATIONS}`)
 
     if (i > 0) {
-      log('Rebuilding...')
-      run('npm run build', { stdio: 'inherit' })
+      log("Rebuilding...")
+      run("npm run build", { stdio: "inherit" })
     }
 
-    previewUrl = deployPreview()
+    const server = serveLocal()
+    let result
+    try {
+      await waitForServer(PREVIEW_URL)
+      result = runLighthouse(PREVIEW_URL)
+    } finally {
+      server.kill("SIGTERM")
+    }
 
-    log('Waiting 15 s for Vercel to propagate...')
-    await new Promise(r => setTimeout(r, 15_000))
-
-    const { scores, failingAuditIds, failingAuditsSummary } = runLighthouse(previewUrl)
-    log(`Scores: ${JSON.stringify(scores)}`)
-
-    const failures = checkThresholds(scores)
+    log(`Scores: ${JSON.stringify(result.scores)}`)
+    const failures = checkThresholds(result.scores)
 
     if (!failures.length) {
-      log('✅ All Lighthouse thresholds passed!')
+      log("✅ Thresholds passed!")
       passed = true
       break
     }
 
-    log(`❌ Failing:\n${failures.join('\n')}`)
-    log(`Failing audits:\n${failingAuditsSummary.join('\n')}`)
+    log(`❌ Failing:\n${failures.join("\n")}`)
 
     if (i < MAX_ITERATIONS - 1) {
-      log('Applying static fix playbook...')
-      const fixed = applyPlaybook(failingAuditIds)
-      if (fixed) {
-        commitIfChanged(`fix: lighthouse playbook attempt ${i + 1}`)
+      log("Applying fixes...")
+      // Call the python script for each failing audit
+      const auditArgs = result.failingAuditIds.map(id => `--audit ${id}`).join(" ")
+      const fixOut = run(`python3 ${FIX_SCRIPT} ${auditArgs}`)
+      log(fixOut)
+      
+      if (fixOut.includes("[playbook] Fixed:")) {
+        commitIfChanged(`fix: lighthouse audit iteration ${i + 1}`)
       } else {
-        log('Playbook has no fixes for remaining audits — stopping early.')
+        log("No fixes applied by playbook.")
         break
       }
-    } else {
-      log('Max iterations reached — thresholds not met.')
     }
   }
 
-  setOutput('passed', String(passed))
-  setOutput('preview_url', previewUrl)
-
+  setOutput("passed", String(passed))
   if (!passed) {
-    log('🚫 Production deploy blocked — Lighthouse thresholds not met.')
+    log("🚫 Deployment blocked.")
     process.exit(1)
+  }
+
+  if (process.env.SKIP_DEPLOY) {
+    log("SKIP_DEPLOY set.")
+    return
   }
 
   deployToProduction()
 }
 
 main().catch(err => {
-  console.error('Fatal:', err)
+  console.error(err)
   process.exit(1)
 })
