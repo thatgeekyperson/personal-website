@@ -1,5 +1,12 @@
 # AGENT.md (Single Source of Truth)
 
+## ⚡ Core Mandates
+
+1.  **Trust the Code, Verify the Docs.** Always read source code before trusting documentation. Use grep_search and read_file extensively.
+2.  **Strategic Delegation.** Use sub-agents (e.g., generalist) for smaller sub-tasks to minimize main session context creep.
+3.  **Zero-Secret Mandate.** NEVER read, print, or log secrets or .env files. Treat credentials as invisible, environment-managed entities.
+
+
 ## Project Goal
 A minimal, production-ready personal website built with React, Vite, TypeScript, and Tailwind CSS v4. Features a hero section, about section, projects showcase, and navigation.
 
