@@ -12,8 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Claude Code — local agent files, not for source control
-.claude/
+# Claude Code — local agent files stay out of source control,
+# but plans and review records are tracked in-repo
+.claude/*
+!.claude/plans/
+!.claude/reviews/
 
 # Editor directories and files
 .vscode/*

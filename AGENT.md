@@ -65,7 +65,7 @@ Every push to main triggers .github/workflows/deploy-optimize.yml.
 - **Verify before Commit**: Always run npm test before committing.
 - **Production Previews**: Always run Lighthouse audits against http://localhost:4173. Never against Vercel preview URLs (they contain extra JS and protection layers that skew scores).
 - **Privacy Check**: Grep for yourusername across the codebase before committing personal content changes.
-- **Docs First**: Create/Update plan files in plans/*.md before significant execution.
+- **Docs First**: Create/Update plan files in .claude/plans/*.md before significant execution.
 - **Build Requirement**: After any code change, run npm run build before npm run preview (as preview serves dist/).
 
 ## Directory Structure
@@ -84,7 +84,8 @@ scripts/
   lighthouse-playbook.js  # Static fix map (audit ID → file edit)
 .github/workflows/
   deploy-optimize.yml     # CI/CD pipeline
-plans/              # Architecture decision records
+.claude/plans/      # Architecture decision records & feature plans
+.claude/reviews/    # Pre-push code review records
 vercel.json         # SPA routing config for Vercel
 .lighthouserc.json  # Lighthouse CI thresholds
 ```

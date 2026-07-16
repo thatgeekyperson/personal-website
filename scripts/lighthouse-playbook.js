@@ -8,6 +8,7 @@
  */
 
 import fs from 'fs'
+import { pathToFileURL } from 'url'
 
 const INDEX_HTML = 'index.html'
 const INDEX_CSS = 'src/index.css'
@@ -112,4 +113,16 @@ export function applyPlaybook(auditIds) {
   }
   if (!anyFixed) process.stdout.write('[playbook] No known fixes for remaining audits — manual intervention needed.\n')
   return anyFixed
+}
+
+// ── CLI entry ─────────────────────────────────────────────────────────────────
+// Usage: node scripts/lighthouse-playbook.js --audit <id> [--audit <id> ...]
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = process.argv.slice(2)
+  const auditIds = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--audit' && args[i + 1]) auditIds.push(args[++i])
+  }
+  applyPlaybook(auditIds)
 }

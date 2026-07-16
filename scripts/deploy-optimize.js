@@ -3,7 +3,7 @@
 /**
  * Reusable Lighthouse Audit & Fix Orchestrator.
  * 
- * Orchestrates: Build -> Local Preview -> Lighthouse Audit -> Fix (via python utility) -> Deploy.
+ * Orchestrates: Build -> Local Preview -> Lighthouse Audit -> Fix (via scripts/lighthouse-playbook.js) -> Deploy.
  */
 
 import { execSync, spawn } from "child_process"
@@ -13,17 +13,17 @@ import path from "path"
 
 // -- Config (override via env) --
 const THRESHOLDS = {
-  performance: parseInt(process.env.LH_PERFORMANCE ?? "80", 10),
-  accessibility: parseInt(process.env.LH_ACCESSIBILITY ?? "90", 10),
-  "best-practices": parseInt(process.env.LH_BEST_PRACTICES ?? "90", 10),
-  seo: parseInt(process.env.LH_SEO ?? "80", 10),
+  performance: parseInt(process.env.LH_PERFORMANCE ?? "95", 10),
+  accessibility: parseInt(process.env.LH_ACCESSIBILITY ?? "100", 10),
+  "best-practices": parseInt(process.env.LH_BEST_PRACTICES ?? "96", 10),
+  seo: parseInt(process.env.LH_SEO ?? "90", 10),
 }
 
 const PREVIEW_URL = process.env.LH_PREVIEW_URL ?? "http://localhost:4173"
 const PREVIEW_PORT = parseInt(new URL(PREVIEW_URL).port, 10) || 80
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS ?? "3", 10)
 const LHCI_DIR = ".lighthouseci"
-const FIX_SCRIPT = ".github/scripts/lighthouse-fix.py"
+const FIX_SCRIPT = "scripts/lighthouse-playbook.js"
 
 // -- Helpers --
 function run(cmd, opts = {}) {
@@ -73,7 +73,18 @@ function waitForServer(url, timeoutMs = 60_000) {
 // -- Lighthouse --
 function runLighthouse(url) {
   const chromeFlags = "--no-sandbox --disable-dev-shm-usage --disable-gpu --headless"
-  const catScore = (r, cat) => Math.round(r.categories[cat].score * 100)
+  // Lighthouse reports score: null when a category errors — exclude those runs
+  // from the median rather than letting null coerce to 0.
+  const medianScore = (reports, cat, label) => {
+    const scores = reports
+      .map(r => r.categories[cat]?.score)
+      .filter(s => s !== null && s !== undefined)
+      .map(s => Math.round(s * 100))
+    const errored = reports.length - scores.length
+    if (errored > 0) log(`⚠️  ${label}: ${errored} run(s) produced no ${cat} score (errored); using ${scores.length} valid run(s).`)
+    if (!scores.length) throw new Error(`${label}: all Lighthouse runs failed to produce a ${cat} score.`)
+    return median(scores)
+  }
   const failingAuditIds = []
 
   // 1. Mobile Pass
@@ -96,10 +107,10 @@ function runLighthouse(url) {
 
   const mobileReports = mobileReportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
   const mobileScores = {
-    performance: median(mobileReports.map(r => catScore(r, "performance"))),
-    accessibility: median(mobileReports.map(r => catScore(r, "accessibility"))),
-    "best-practices": median(mobileReports.map(r => catScore(r, "best-practices"))),
-    seo: median(mobileReports.map(r => catScore(r, "seo"))),
+    performance: medianScore(mobileReports, "performance", "Mobile"),
+    accessibility: medianScore(mobileReports, "accessibility", "Mobile"),
+    "best-practices": medianScore(mobileReports, "best-practices", "Mobile"),
+    seo: medianScore(mobileReports, "seo", "Mobile"),
   }
 
   for (const report of mobileReports) {
@@ -131,10 +142,10 @@ function runLighthouse(url) {
 
   const desktopReports = desktopReportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
   const desktopScores = {
-    performance: median(desktopReports.map(r => catScore(r, "performance"))),
-    accessibility: median(desktopReports.map(r => catScore(r, "accessibility"))),
-    "best-practices": median(desktopReports.map(r => catScore(r, "best-practices"))),
-    seo: median(desktopReports.map(r => catScore(r, "seo"))),
+    performance: medianScore(desktopReports, "performance", "Desktop"),
+    accessibility: medianScore(desktopReports, "accessibility", "Desktop"),
+    "best-practices": medianScore(desktopReports, "best-practices", "Desktop"),
+    seo: medianScore(desktopReports, "seo", "Desktop"),
   }
 
   for (const report of desktopReports) {
@@ -172,7 +183,7 @@ function commitIfChanged(message) {
 
   if (!process.env.GITHUB_ACTIONS) {
     log(`[dry-run] Local changes detected, would commit: "${message}"`)
-    return true
+    return false
   }
 
   run("git add .")
@@ -220,9 +231,8 @@ async function main() {
 
     if (i < MAX_ITERATIONS - 1) {
       log("Applying fixes...")
-      // Call the python script for each failing audit
       const auditArgs = result.failingAuditIds.map(id => `--audit ${id}`).join(" ")
-      const fixOut = run(`python3 ${FIX_SCRIPT} ${auditArgs}`)
+      const fixOut = run(`node ${FIX_SCRIPT} ${auditArgs}`)
       log(fixOut)
       
       if (fixOut.includes("[playbook] Fixed:")) {

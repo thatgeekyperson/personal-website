@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import fs from 'fs'
 
 // Create an in-memory virtual file system representation.
 // Note: Variable must start with "mock" to satisfy Vitest's module mocking hoisting rules.
@@ -9,7 +8,12 @@ vi.mock('fs', () => {
   return {
     default: {
       existsSync: vi.fn((path: string) => path in mockFiles),
-      readFileSync: vi.fn((path: string) => mockFiles[path] || ''),
+      readFileSync: vi.fn((path: string) => {
+        // Mirror real fs: reading a missing file is an error, so a typo'd
+        // path in a test fails loudly instead of silently returning ''.
+        if (!(path in mockFiles)) throw new Error(`ENOENT: no such file, open '${path}'`)
+        return mockFiles[path]
+      }),
       writeFileSync: vi.fn((path: string, content: string) => {
         mockFiles[path] = content
       })
@@ -226,6 +230,15 @@ describe('lighthouse-playbook fixes', () => {
       const result = applyPlaybook(['viewport'])
       
       expect(result).toBe(false)
+    })
+  })
+
+  describe('unknown audits', () => {
+    it('returns false and logs when no audit ID has a known fix', () => {
+      const result = applyPlaybook(['unknown-audit-a', 'unknown-audit-b'])
+
+      expect(result).toBe(false)
+      expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('[playbook] No known fixes'))
     })
   })
 
