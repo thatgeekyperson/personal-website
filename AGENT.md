@@ -39,15 +39,15 @@ Every push to main triggers .github/workflows/deploy-optimize.yml.
 
 ### Pipeline Logic (scripts/deploy-optimize.js)
 1. **Build & Serve**: Builds the project and serves it on :4173.
-2. **Lighthouse Audit**: Runs 3 collections against localhost:4173. Uses **median** score per category.
-3. **Threshold Gate**:
+2. **Lighthouse Audit**: Runs 3 collections for mobile and 3 collections for desktop against localhost:4173, calculating the **median** score per category for each.
+3. **Threshold Gate**: Validates both mobile and desktop median scores against:
    - Performance: **95**
    - Accessibility: **100**
    - Best Practices: **96** (Lowered due to localhost @vercel/analytics 404 artifact)
    - SEO: **90**
-4. **Fix Loop**: If thresholds fail, it extracts failing audit IDs and applies fixes from scripts/lighthouse-playbook.js.
+4. **Fix Loop**: If thresholds fail on either pass, it extracts failing audit IDs from both passes and applies fixes from scripts/lighthouse-playbook.js.
 5. **Iteration**: Rebuilds and re-audits up to 3 times.
-6. **Deploy**: Only deploys to production if all thresholds pass.
+6. **Deploy**: Only deploys to production if all thresholds pass for both mobile and desktop.
 
 ### Static Fix Playbook (scripts/lighthouse-playbook.js)
 | Audit ID | Fix Strategy |
@@ -88,3 +88,6 @@ plans/              # Architecture decision records
 vercel.json         # SPA routing config for Vercel
 .lighthouserc.json  # Lighthouse CI thresholds
 ```
+
+## Active Plans
+Active feature plans and step-by-step tasks are located in the `./.claude/plans/` directory.

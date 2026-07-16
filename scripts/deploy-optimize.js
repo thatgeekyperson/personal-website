@@ -72,12 +72,13 @@ function waitForServer(url, timeoutMs = 60_000) {
 
 // -- Lighthouse --
 function runLighthouse(url) {
-  log(`Running Lighthouse (median of 3) against ${url}`)
-
-  if (fs.existsSync(LHCI_DIR)) fs.rmSync(LHCI_DIR, { recursive: true })
-
-  // Use --chrome-flags to bypass potential interstitials and sandbox issues
   const chromeFlags = "--no-sandbox --disable-dev-shm-usage --disable-gpu --headless"
+  const catScore = (r, cat) => Math.round(r.categories[cat].score * 100)
+  const failingAuditIds = []
+
+  // 1. Mobile Pass
+  log(`Running Mobile Lighthouse (median of 3) against ${url}`)
+  if (fs.existsSync(LHCI_DIR)) fs.rmSync(LHCI_DIR, { recursive: true })
 
   run(
     [
@@ -90,21 +91,18 @@ function runLighthouse(url) {
     { stdio: "inherit" }
   )
 
-  const reportFiles = fs.readdirSync(LHCI_DIR).filter(f => f.endsWith(".json") && !f.includes("manifest"))
-  if (!reportFiles.length) throw new Error("No Lighthouse report found.")
+  const mobileReportFiles = fs.readdirSync(LHCI_DIR).filter(f => f.endsWith(".json") && !f.includes("manifest"))
+  if (!mobileReportFiles.length) throw new Error("No Mobile Lighthouse report found.")
 
-  const reports = reportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
-  const catScore = (r, cat) => Math.round(r.categories[cat].score * 100)
-  
-  const scores = {
-    performance: median(reports.map(r => catScore(r, "performance"))),
-    accessibility: median(reports.map(r => catScore(r, "accessibility"))),
-    "best-practices": median(reports.map(r => catScore(r, "best-practices"))),
-    seo: median(reports.map(r => catScore(r, "seo"))),
+  const mobileReports = mobileReportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
+  const mobileScores = {
+    performance: median(mobileReports.map(r => catScore(r, "performance"))),
+    accessibility: median(mobileReports.map(r => catScore(r, "accessibility"))),
+    "best-practices": median(mobileReports.map(r => catScore(r, "best-practices"))),
+    seo: median(mobileReports.map(r => catScore(r, "seo"))),
   }
 
-  const failingAuditIds = []
-  for (const report of reports) {
+  for (const report of mobileReports) {
     for (const audit of Object.values(report.audits)) {
       if (audit.score !== null && audit.score < 1) {
         if (!failingAuditIds.includes(audit.id)) failingAuditIds.push(audit.id)
@@ -112,13 +110,48 @@ function runLighthouse(url) {
     }
   }
 
-  return { scores, failingAuditIds }
+  // 2. Desktop Pass
+  log(`Running Desktop Lighthouse (median of 3) against ${url}`)
+  if (fs.existsSync(LHCI_DIR)) fs.rmSync(LHCI_DIR, { recursive: true })
+
+  run(
+    [
+      "lhci collect",
+      `--url="${url}"`,
+      "--numberOfRuns=3",
+      `--settings.chromeFlags="${chromeFlags}"`,
+      "--settings.onlyCategories=performance,accessibility,best-practices,seo",
+      "--settings.preset=desktop",
+    ].join(" "),
+    { stdio: "inherit" }
+  )
+
+  const desktopReportFiles = fs.readdirSync(LHCI_DIR).filter(f => f.endsWith(".json") && !f.includes("manifest"))
+  if (!desktopReportFiles.length) throw new Error("No Desktop Lighthouse report found.")
+
+  const desktopReports = desktopReportFiles.map(f => JSON.parse(fs.readFileSync(path.join(LHCI_DIR, f), "utf8")))
+  const desktopScores = {
+    performance: median(desktopReports.map(r => catScore(r, "performance"))),
+    accessibility: median(desktopReports.map(r => catScore(r, "accessibility"))),
+    "best-practices": median(desktopReports.map(r => catScore(r, "best-practices"))),
+    seo: median(desktopReports.map(r => catScore(r, "seo"))),
+  }
+
+  for (const report of desktopReports) {
+    for (const audit of Object.values(report.audits)) {
+      if (audit.score !== null && audit.score < 1) {
+        if (!failingAuditIds.includes(audit.id)) failingAuditIds.push(audit.id)
+      }
+    }
+  }
+
+  return { mobileScores, desktopScores, failingAuditIds }
 }
 
-function checkThresholds(scores) {
+function checkThresholds(device, scores) {
   return Object.entries(THRESHOLDS)
     .filter(([cat, min]) => scores[cat] < min)
-    .map(([cat, min]) => `  ${cat}: ${scores[cat]} (need ≥ ${min})`)
+    .map(([cat, min]) => `  ${device} ${cat}: ${scores[cat]} (need ≥ ${min})`)
 }
 
 // -- Deployment --
@@ -136,6 +169,12 @@ function deployToProduction() {
 function commitIfChanged(message) {
   const status = run("git status --porcelain").trim()
   if (!status) return false
+
+  if (!process.env.GITHUB_ACTIONS) {
+    log(`[dry-run] Local changes detected, would commit: "${message}"`)
+    return true
+  }
+
   run("git add .")
   run(`git commit -m "${message}"`)
   run("git push origin HEAD")
@@ -164,8 +203,12 @@ async function main() {
       server.kill("SIGTERM")
     }
 
-    log(`Scores: ${JSON.stringify(result.scores)}`)
-    const failures = checkThresholds(result.scores)
+    log(`Mobile Scores: ${JSON.stringify(result.mobileScores)}`)
+    log(`Desktop Scores: ${JSON.stringify(result.desktopScores)}`)
+    const failures = [
+      ...checkThresholds("Mobile", result.mobileScores),
+      ...checkThresholds("Desktop", result.desktopScores)
+    ]
 
     if (!failures.length) {
       log("✅ Thresholds passed!")
