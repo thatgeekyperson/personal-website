@@ -29,8 +29,8 @@
       "@/*": ["src/*"]
     },
 
-    /* Vitest globals */
-    "types": ["vitest/globals"]
+    /* Vitest globals + Node (tests under src/ spy on process.stdout) */
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src"]
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import process from 'node:process'
 
 // Create an in-memory virtual file system representation.
 // Note: Variable must start with "mock" to satisfy Vitest's module mocking hoisting rules.
